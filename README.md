@@ -39,10 +39,40 @@ TELEGRAM_CHAT_ID="your_telegram_chat_id_here"
 
 ## Running the Bot
 
-Run the script directly. The bot will run indefinitely, polling the Alpaca account once per hour during market hours:
+To start the bot, run the launcher from anywhere:
 
 ```bash
-python wheel_spy.py
+./run.sh
 ```
 
-It is recommended to run this script on a cloud server (like AWS EC2, DigitalOcean, or Heroku) using a process manager like `tmux`, `screen`, or `systemd` to keep it running 24/7.
+`run.sh` changes to the repository root and runs `wheel_spy.py` with the `venv/` Python, so the virtual environment must exist at `venv/` (see Setup). You can also run `python wheel_spy.py` from the repository root with the venv activated.
+
+The bot runs indefinitely, checking the market clock every 6 minutes and evaluating positions whenever the market is open. Keep it running on a server or a machine that stays on during market hours.
+
+## Run on startup
+
+On Linux, `deploy/wheel-spy.service` is a systemd *user* unit that runs `run.sh`, restarts it 30 seconds after it exits, and logs to the journal.
+
+> **Warning:** two running instances can double-sell options. Stop any manually started bot first (`pgrep -af wheel_spy`).
+
+Install and enable it:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/wheel-spy.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable wheel-spy     # start on next boot
+systemctl --user start wheel-spy      # start now (only if no manual instance)
+loginctl enable-linger "$USER"        # start at boot without logging in
+```
+
+Manage it:
+
+```bash
+systemctl --user status wheel-spy
+systemctl --user stop wheel-spy
+systemctl --user disable wheel-spy    # don't start on boot
+journalctl --user -u wheel-spy -f     # follow logs
+```
+
+The unit contains absolute paths to this repository; if you move the repo, update `WorkingDirectory` and `ExecStart` in the copied unit and run `systemctl --user daemon-reload`. The service does not wait for the network at boot. A bot that starts offline does not exit: each check that fails is logged and retried 6 minutes later; `Restart=always` only covers a crash.
